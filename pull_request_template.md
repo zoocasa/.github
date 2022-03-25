@@ -1,5 +1,5 @@
 ### Howdy fellow engineer!
-🔗 🎫 [Link to Ticket/Story](paste it here!)
+🔗 🎫 [Link to Ticket/Story](paste)
 
 - [ ] 🔨 The code change implements the acceptance criteria.
 - [ ] 😍 The implementation & user experience makes sense to you and us.
