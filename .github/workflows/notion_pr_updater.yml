@@ -32,4 +32,4 @@ jobs:
           --header 'Notion-Version: 2022-06-28' \
           --header "Authorization: Bearer $token" \
           --header 'Content-Type: application/json' \
-          --data-raw '{"properties": {"Status": {"select": {"name": "Code Review 🧑‍💻"}},"Git Branch": {"url": "${{github.event.pull_request.commits_url}}"},"Pull Request": {"url": "${{github.event.pull_request.url}}"}}}'
+          --data-raw '{"properties": {"Status": {"select": {"name": "Code Review 🧑‍💻"}},"Git Branch": {"url": "${{github.event.html_url}}"},"Pull Request": {"url": "${{github.event.pull_request.html_url}}"}}}'
