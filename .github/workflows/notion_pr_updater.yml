@@ -6,7 +6,9 @@ on:
       - '**'  
     types: [opened, reopened, edited]
   workflow_call:
-
+    secrets:
+      NOTION_SECRET_ACCESS_KEY:
+        required: true
 jobs:
   # This workflow contains a single job called "build"
   build:
