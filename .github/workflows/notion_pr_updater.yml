@@ -22,7 +22,7 @@ jobs:
       - name: Update Notion Ticket
         run: |
           ticketNumber="$(echo $BODY | grep -Eo "[?&]p=([^&#]*)" | head -1 | cut -c 4-)"
-          number=${ticketNumber%% *}
+          number=${ticketNumber%%)*}
           ticket=$(echo $number | tr -d '\r')
           var=$(curl --location --request GET "https://api.notion.com/v1/pages/$ticket" --header 'Notion-Version: 2022-06-28' --header "Authorization: Bearer $token"| jq -r .id) || exit
           
