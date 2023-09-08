@@ -1,0 +1,42 @@
+name: Automation Testing Google Sheet Report Update
+
+on:
+    workflow_call:
+      inputs:
+        coverage_percentage:
+          required: true
+          type: string
+        spreadsheet_id:
+            required: true
+            type: string
+      secrets:
+        GSHEET_CLIENT_EMAIL:
+          required: true
+        GSHEET_PRIVATE_KEY:
+          required: true
+
+jobs:
+  write_to_sheet:
+    runs-on: ubuntu-latest
+    name: Write to Google Sheet
+    steps:
+      - name: Get current date
+        id: date
+        run: echo "currentDate=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+      - name: Write test coverage
+        id: update_worksheet
+        uses: jroehl/gsheet.action@v2.0.0 # you can specify '@release' to always have the latest changes
+        with:
+          spreadsheetId: ${{ inputs.spreadsheet_id }}
+          commands: | # list of commands, specified as a valid JSON string
+            [
+              { "command": "appendData", "args": { "data": [["${{ steps.date.outputs.currentDate }}", "${{ inputs.coverage_percentage }}"]], "minCol": 1, "worksheetTitle": "Sheet1" } }
+            ]
+        env:
+          GSHEET_CLIENT_EMAIL: ${{ secrets.GSHEET_CLIENT_EMAIL }}
+          GSHEET_PRIVATE_KEY: ${{ secrets.GSHEET_PRIVATE_KEY }}
+      - name: Dump results
+        env:
+          #  the output of the action can be found in ${{ steps.update_worksheet.outputs.results }}
+          RESULTS: ${{ steps.update_worksheet.outputs.results }}
+        run: echo "$RESULTS" | jq
