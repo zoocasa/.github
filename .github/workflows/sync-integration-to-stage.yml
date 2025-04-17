@@ -1,0 +1,54 @@
+name: Retag ECR Images
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_tag:
+        description: 'Source tag to retag from'
+        required: true
+        type: string
+      target_tag:
+        description: 'Target tag to retag to'
+        required: true
+        type: string
+      image_list:
+        description: 'Comma-separated list of image names to retag'
+        required: true
+        type: string
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: zoocasa
+
+jobs:
+  retag-images:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Retag images
+        run: |
+          IFS=',' read -ra IMAGES <<< "${{ github.event.inputs.image_list }}"
+          for image in "${IMAGES[@]}"; do
+            echo "Retagging $image from ${{ github.event.inputs.source_tag }} to ${{ github.event.inputs.target_tag }}"
+            aws ecr batch-get-image \
+              --repository-name ${{ env.ECR_REPOSITORY }} \
+              --image-ids imageTag=${{ github.event.inputs.source_tag }} \
+              --query 'images[].imageManifest' \
+              --output text | \
+            aws ecr put-image \
+              --repository-name ${{ env.ECR_REPOSITORY }} \
+              --image-tag ${{ github.event.inputs.target_tag }} \
+              --image-manifest "$(cat)"
+          done 
