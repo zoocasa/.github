@@ -1,0 +1,88 @@
+name: Sync Integration to Stage
+
+on:
+  workflow_dispatch:
+    inputs:
+      service_list:
+        description: 'Comma-separated list of services to sync'
+        required: true
+        type: string
+      dry_run:
+        description: 'If true, only show what would be changed without making any changes'
+        required: false
+        type: boolean
+        default: false
+
+env:
+  AWS_REGION: us-east-1
+  INTEGRATION_CLUSTER: zoocasa-stage-two
+  STAGE_CLUSTER: zoocasa-stage
+
+jobs:
+  sync-image:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Update kubeconfig for integration cluster
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.INTEGRATION_CLUSTER }}
+
+      - name: Get current images from integration cluster
+        id: get_integration_images
+        run: |
+          IFS=',' read -ra SERVICES <<< "${{ github.event.inputs.service_list }}"
+          for service in "${SERVICES[@]}"; do
+            INTEGRATION_IMAGE=$(kubectl get deployment $service -n stage -o jsonpath='{.spec.template.spec.containers[0].image}')
+            echo "Found image for $service: $INTEGRATION_IMAGE"
+            echo "$service=$INTEGRATION_IMAGE" >> integration_images.txt
+          done
+          echo "integration_images=$(cat integration_images.txt)" >> $GITHUB_OUTPUT
+
+      - name: Update kubeconfig for stage cluster
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.STAGE_CLUSTER }}
+
+      - name: Get current images from stage cluster
+        id: get_stage_images
+        run: |
+          IFS=',' read -ra SERVICES <<< "${{ github.event.inputs.service_list }}"
+          for service in "${SERVICES[@]}"; do
+            STAGE_IMAGE=$(kubectl get deployment $service -n stage -o jsonpath='{.spec.template.spec.containers[0].image}')
+            echo "Current target image for $service: $STAGE_IMAGE"
+            echo "$service=$STAGE_IMAGE" >> stage_images.txt
+          done
+          echo "stage_images=$(cat stage_images.txt)" >> $GITHUB_OUTPUT
+
+      - name: Update images in stage cluster
+        if: ${{ github.event.inputs.dry_run == false }}
+        run: |
+          IFS=',' read -ra SERVICES <<< "${{ github.event.inputs.service_list }}"
+          for service in "${SERVICES[@]}"; do
+            echo "Updating $service..."
+            INTEGRATION_IMAGE=$(grep "^$service=" <<< "${{ steps.get_integration_images.outputs.integration_images }}" | cut -d'=' -f2)
+            kubectl set image deployment/$service \
+              -n stage \
+              $service=$INTEGRATION_IMAGE
+          done
+
+      - name: Show planned changes (dry run)
+        if: ${{ github.event.inputs.dry_run == true }}
+        run: |
+          IFS=',' read -ra SERVICES <<< "${{ github.event.inputs.service_list }}"
+          for service in "${SERVICES[@]}"; do
+            INTEGRATION_IMAGE=$(grep "^$service=" <<< "${{ steps.get_integration_images.outputs.integration_images }}" | cut -d'=' -f2)
+            STAGE_IMAGE=$(grep "^$service=" <<< "${{ steps.get_stage_images.outputs.stage_images }}" | cut -d'=' -f2)
+            echo "DRY RUN: Would update $service in ${{ env.STAGE_CLUSTER }}"
+            echo "From: $STAGE_IMAGE"
+            echo "To: $INTEGRATION_IMAGE"
+            echo "---"
+          done
