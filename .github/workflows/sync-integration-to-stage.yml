@@ -1,27 +1,25 @@
-name: Retag ECR Images
+name: Sync Stage Image Between Clusters
 
 on:
   workflow_dispatch:
     inputs:
-      source_tag:
-        description: 'Source tag to retag from'
+      service_list:
+        description: 'Comma-separated list of services to sync'
         required: true
         type: string
-      target_tag:
-        description: 'Target tag to retag to'
-        required: true
-        type: string
-      image_list:
-        description: 'Comma-separated list of image names to retag'
-        required: true
-        type: string
+      dry_run:
+        description: 'If true, only show what would be changed without making any changes'
+        required: false
+        type: boolean
+        default: false
 
 env:
   AWS_REGION: us-east-1
-  ECR_REPOSITORY: zoocasa
+  SOURCE_CLUSTER: zoocasa-stage-two
+  TARGET_CLUSTER: zoocasa-stage
 
 jobs:
-  retag-images:
+  sync-image:
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -30,25 +28,61 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Login to Amazon ECR
-        id: login-ecr
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Retag images
+      - name: Update kubeconfig for source cluster
         run: |
-          IFS=',' read -ra IMAGES <<< "${{ github.event.inputs.image_list }}"
-          for image in "${IMAGES[@]}"; do
-            echo "Retagging $image from ${{ github.event.inputs.source_tag }} to ${{ github.event.inputs.target_tag }}"
-            aws ecr batch-get-image \
-              --repository-name ${{ env.ECR_REPOSITORY }} \
-              --image-ids imageTag=${{ github.event.inputs.source_tag }} \
-              --query 'images[].imageManifest' \
-              --output text | \
-            aws ecr put-image \
-              --repository-name ${{ env.ECR_REPOSITORY }} \
-              --image-tag ${{ github.event.inputs.target_tag }} \
-              --image-manifest "$(cat)"
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.SOURCE_CLUSTER }}
+
+      - name: Get current images from source cluster
+        id: get_images
+        run: |
+          IFS=',' read -ra SERVICES <<< "${{ github.event.inputs.service_list }}"
+          for service in "${SERVICES[@]}"; do
+            IMAGE=$(kubectl get deployment $service -n stage -o jsonpath='{.spec.template.spec.containers[0].image}')
+            echo "Found image for $service: $IMAGE"
+            echo "$service=$IMAGE" >> images.txt
+          done
+          echo "images=$(cat images.txt)" >> $GITHUB_OUTPUT
+
+      - name: Update kubeconfig for target cluster
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.TARGET_CLUSTER }}
+
+      - name: Get current target images
+        id: get_target_images
+        run: |
+          IFS=',' read -ra SERVICES <<< "${{ github.event.inputs.service_list }}"
+          for service in "${SERVICES[@]}"; do
+            TARGET_IMAGE=$(kubectl get deployment $service -n stage -o jsonpath='{.spec.template.spec.containers[0].image}')
+            echo "Current target image for $service: $TARGET_IMAGE"
+            echo "$service=$TARGET_IMAGE" >> target_images.txt
+          done
+          echo "target_images=$(cat target_images.txt)" >> $GITHUB_OUTPUT
+
+      - name: Update images in target cluster
+        if: ${{ github.event.inputs.dry_run == false }}
+        run: |
+          IFS=',' read -ra SERVICES <<< "${{ github.event.inputs.service_list }}"
+          for service in "${SERVICES[@]}"; do
+            echo "Updating $service..."
+            SOURCE_IMAGE=$(grep "^$service=" <<< "${{ steps.get_images.outputs.images }}" | cut -d'=' -f2)
+            kubectl set image deployment/$service \
+              -n stage \
+              $service=$SOURCE_IMAGE
+          done
+
+      - name: Show planned changes (dry run)
+        if: ${{ github.event.inputs.dry_run == true }}
+        run: |
+          IFS=',' read -ra SERVICES <<< "${{ github.event.inputs.service_list }}"
+          for service in "${SERVICES[@]}"; do
+            SOURCE_IMAGE=$(grep "^$service=" <<< "${{ steps.get_images.outputs.images }}" | cut -d'=' -f2)
+            TARGET_IMAGE=$(grep "^$service=" <<< "${{ steps.get_target_images.outputs.target_images }}" | cut -d'=' -f2)
+            echo "DRY RUN: Would update $service in ${{ env.TARGET_CLUSTER }}"
+            echo "From: $TARGET_IMAGE"
+            echo "To: $SOURCE_IMAGE"
+            echo "---"
           done 
