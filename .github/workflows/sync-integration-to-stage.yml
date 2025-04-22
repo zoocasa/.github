@@ -73,7 +73,7 @@ jobs:
           for service in "${SERVICES[@]}"; do
             echo "Updating $service..."
             INTEGRATION_IMAGE=$(grep "^$service=" <<< "${{ steps.get_integration_images.outputs.integration_images }}" | cut -d'=' -f2)
-            kubectl set image deployment/$service \
+            kubectl set image deploy/$service \
               -n stage \
               $service=$INTEGRATION_IMAGE
           done
