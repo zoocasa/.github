@@ -19,7 +19,7 @@ env:
   STAGE_CLUSTER: zoocasa-stage
 
 jobs:
-  sync-image:
+  sync-images:
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -39,7 +39,7 @@ jobs:
       - name: Get current images from integration cluster
         id: get_integration_images
         run: |
-          IFS=',' read -ra SERVICES <<< "${{ github.event.inputs.service_list }}"
+          IFS=',' read -ra SERVICES <<< "${{ inputs.service_list }}"
           for service in "${SERVICES[@]}"; do
             INTEGRATION_IMAGE=$(kubectl get deployment $service -n stage -o jsonpath='{.spec.template.spec.containers[0].image}')
             echo "Found image for $service: $INTEGRATION_IMAGE"
@@ -54,7 +54,7 @@ jobs:
       - name: Get current images from stage cluster
         id: get_stage_images
         run: |
-          IFS=',' read -ra SERVICES <<< "${{ github.event.inputs.service_list }}"
+          IFS=',' read -ra SERVICES <<< "${{ inputs.service_list }}"
           for service in "${SERVICES[@]}"; do
             STAGE_IMAGE=$(kubectl get deployment $service -n stage -o jsonpath='{.spec.template.spec.containers[0].image}')
             echo "Current target image for $service: $STAGE_IMAGE"
@@ -63,9 +63,9 @@ jobs:
           echo "stage_images=$(cat stage_images.txt)" >> $GITHUB_OUTPUT
 
       - name: Update images in stage cluster
-        if: ${{ github.event.inputs.dry_run == false }}
+        if: ${{ inputs.dry_run == false }}
         run: |
-          IFS=',' read -ra SERVICES <<< "${{ github.event.inputs.service_list }}"
+          IFS=',' read -ra SERVICES <<< "${{ inputs.service_list }}"
           for service in "${SERVICES[@]}"; do
             echo "Updating $service..."
             INTEGRATION_IMAGE=$(grep "^$service=" <<< "${{ steps.get_integration_images.outputs.integration_images }}" | cut -d'=' -f2)
@@ -75,9 +75,9 @@ jobs:
           done
 
       - name: Show planned changes (dry run)
-        if: ${{ github.event.inputs.dry_run == true }}
+        if: ${{ inputs.dry_run == true }}
         run: |
-          IFS=',' read -ra SERVICES <<< "${{ github.event.inputs.service_list }}"
+          IFS=',' read -ra SERVICES <<< "${{ inputs.service_list }}"
           for service in "${SERVICES[@]}"; do
             INTEGRATION_IMAGE=$(grep "^$service=" <<< "${{ steps.get_integration_images.outputs.integration_images }}" | cut -d'=' -f2)
             STAGE_IMAGE=$(grep "^$service=" <<< "${{ steps.get_stage_images.outputs.stage_images }}" | cut -d'=' -f2)
