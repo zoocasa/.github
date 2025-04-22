@@ -45,7 +45,9 @@ jobs:
             echo "Found image for $service: $INTEGRATION_IMAGE"
             echo "$service=$INTEGRATION_IMAGE" >> integration_images.txt
           done
-          echo "integration_images=$(cat integration_images.txt)" >> $GITHUB_OUTPUT
+          echo "integration_images<<EOF" >> $GITHUB_OUTPUT
+          cat integration_images.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Update kubeconfig for stage cluster
         run: |
@@ -60,7 +62,9 @@ jobs:
             echo "Current target image for $service: $STAGE_IMAGE"
             echo "$service=$STAGE_IMAGE" >> stage_images.txt
           done
-          echo "stage_images=$(cat stage_images.txt)" >> $GITHUB_OUTPUT
+          echo "stage_images<<EOF" >> $GITHUB_OUTPUT
+          cat stage_images.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Update images in stage cluster
         if: ${{ inputs.dry_run == false }}
