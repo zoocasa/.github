@@ -27,7 +27,7 @@ Before using this workflow, ensure you have:
 To sync multiple services with a dry run:
 
 ```sh
-service_list: importer-listings-address,importer-listings-election
+service_list: client-app,client-app-worker,go-search,go-search-indexer,go-search-insights,go-search-sitemaps,importer-listings-address,importer-listings-controller,importer-listings-election,importer-listings-image-observaility,importer-listings-populator,zoocasa-next,zoocasa-next-images
 dry_run: true
 ```
 
