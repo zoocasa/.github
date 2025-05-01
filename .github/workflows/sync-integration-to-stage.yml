@@ -17,6 +17,7 @@ env:
   AWS_REGION: us-east-1
   INTEGRATION_CLUSTER: zoocasa-stage-two
   STAGE_CLUSTER: zoocasa-stage
+  IMPORTER_SERVICES: importer-listings-address,importer-listings-election,importer-listings-populator,importer-listings-image-observability
 
 jobs:
   sync-images:
@@ -70,23 +71,35 @@ jobs:
         if: ${{ inputs.dry_run == false }}
         run: |
           IFS=',' read -ra SERVICES <<< "${{ inputs.service_list }}"
+          IFS=',' read -ra IMPORTERS <<< "${{ env.IMPORTER_SERVICES }}"
           for service in "${SERVICES[@]}"; do
             echo "Updating $service..."
             INTEGRATION_IMAGE=$(grep "^$service=" <<< "${{ steps.get_integration_images.outputs.integration_images }}" | cut -d'=' -f2)
+            if [[ " ${IMPORTERS[@]} " =~ " ${service} " ]]; then
+              CONTAINER_NAME="importer-go"
+            else
+              CONTAINER_NAME="$service"
+            fi
             kubectl set image deploy/$service \
               -n stage \
-              $service=$INTEGRATION_IMAGE
+              $CONTAINER_NAME=$INTEGRATION_IMAGE
           done
 
       - name: Show planned changes (dry run)
         if: ${{ inputs.dry_run == true }}
         run: |
           IFS=',' read -ra SERVICES <<< "${{ inputs.service_list }}"
+          IFS=',' read -ra IMPORTERS <<< "${{ env.IMPORTER_SERVICES }}"
           for service in "${SERVICES[@]}"; do
             INTEGRATION_IMAGE=$(grep "^$service=" <<< "${{ steps.get_integration_images.outputs.integration_images }}" | cut -d'=' -f2)
             STAGE_IMAGE=$(grep "^$service=" <<< "${{ steps.get_stage_images.outputs.stage_images }}" | cut -d'=' -f2)
             echo "DRY RUN: Would update $service in ${{ env.STAGE_CLUSTER }}"
             echo "From: $STAGE_IMAGE"
             echo "To: $INTEGRATION_IMAGE"
+            if [[ " ${IMPORTERS[@]} " =~ " ${service} " ]]; then
+              echo "Container name: importer-go"
+            else
+              echo "Container name: $service"
+            fi
             echo "---"
           done
